@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SpendSmart — Personal Expense Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'] } } }
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-modal {
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            width: 24px; height: 24px;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen antialiased selection:bg-indigo-500 selection:text-white">
+
+    <!-- ═══════════════════════════════════════════════════════
+         AUTH SCREEN (shown when not logged in)
+    ════════════════════════════════════════════════════════ -->
+    <div id="authScreen" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950">
+        <div class="w-full max-w-md">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 mx-auto mb-4">
+                    <i class="fa-solid fa-wallet text-2xl text-white"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-white">SpendSmart</h1>
+                <p class="text-sm text-slate-400 mt-1">Personal Expense Tracker</p>
+            </div>
+
+            <div class="glass-modal rounded-2xl p-6 shadow-2xl">
+                <!-- Tab switcher -->
+                <div class="grid grid-cols-2 gap-1 p-1 bg-slate-900 rounded-xl border border-slate-800 text-xs mb-4">
+                    <button id="tabLogin" onclick="switchAuthTab('login')" class="py-2 rounded-lg font-semibold transition bg-indigo-600 text-white">Sign In</button>
+                    <button id="tabSignup" onclick="switchAuthTab('signup')" class="py-2 rounded-lg font-semibold transition text-slate-400 hover:text-white">Sign Up</button>
+                </div>
+
+                <form id="authForm" onsubmit="handleAuthSubmit(event)" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Email</label>
+                        <input type="email" id="authEmail" required placeholder="you@example.com"
+                            class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Password</label>
+                        <input type="password" id="authPassword" required minlength="6" placeholder="At least 6 characters"
+                            class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                    </div>
+
+                    <div id="authError" class="hidden text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2"></div>
+
+                    <button type="submit" id="authSubmitBtn"
+                        class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/30 transition active:scale-95 flex items-center justify-center gap-2">
+                        <span id="authSubmitText">Sign In</span>
+                    </button>
+                </form>
+
+                <p class="text-[11px] text-slate-500 text-center mt-4">
+                    Your data is protected by row-level security. Only you can access it.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MAIN APP (shown when logged in)
+    ════════════════════════════════════════════════════════ -->
+    <div id="appRoot" class="hidden min-h-screen flex flex-col md:flex-row">
+
+        <!-- Sidebar overlay (mobile) -->
+        <div id="sidebarOverlay" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-40 hidden md:hidden"></div>
+
+        <!-- Sidebar -->
+        <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-64 bg-slate-950/95 border-r border-slate-800/80 backdrop-blur-xl transform -translate-x-full md:translate-x-0 md:static md:inset-auto transition-transform duration-300 ease-in-out flex flex-col justify-between flex-shrink-0 h-full">
+            <div>
+                <div class="px-6 py-5 border-b border-slate-800/80 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 text-white">
+                            <i class="fa-solid fa-wallet text-lg"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-base font-bold tracking-tight text-white">SpendSmart</h1>
+                            <p class="text-xs text-slate-400">Expense Tracker</p>
+                        </div>
+                    </div>
+                    <button onclick="toggleSidebar()" class="md:hidden text-slate-400 hover:text-white p-2">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+
+                <nav class="p-4 space-y-1.5">
+                    <button onclick="switchPage('dashboard')" id="nav-dashboard" class="nav-item w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/60 transition group">
+                        <i class="fa-solid fa-chart-line text-sm w-5 text-slate-400 group-hover:text-indigo-400 transition"></i>
+                        <span>Dashboard</span>
+                    </button>
+                    <button onclick="switchPage('transactions')" id="nav-transactions" class="nav-item w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/60 transition group">
+                        <i class="fa-solid fa-list-check text-sm w-5 text-slate-400 group-hover:text-indigo-400 transition"></i>
+                        <span>Transactions</span>
+                    </button>
+                    <button onclick="switchPage('analytics')" id="nav-analytics" class="nav-item w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/60 transition group">
+                        <i class="fa-solid fa-chart-pie text-sm w-5 text-slate-400 group-hover:text-indigo-400 transition"></i>
+                        <span>Analytics & Reports</span>
+                    </button>
+                    <button onclick="switchPage('budgets')" id="nav-budgets" class="nav-item w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/60 transition group">
+                        <i class="fa-solid fa-bullseye text-sm w-5 text-slate-400 group-hover:text-indigo-400 transition"></i>
+                        <span>Budgets & Goals</span>
+                    </button>
+                    <button onclick="switchPage('settings')" id="nav-settings" class="nav-item w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/60 transition group">
+                        <i class="fa-solid fa-gear text-sm w-5 text-slate-400 group-hover:text-indigo-400 transition"></i>
+                        <span>Settings & Data</span>
+                    </button>
+                </nav>
+            </div>
+
+            <div class="p-4 border-t border-slate-800/80 mb-16 md:mb-0 space-y-2">
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800/80 flex items-center gap-3">
+                    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                    <div class="overflow-hidden">
+                        <p class="text-[11px] font-medium text-slate-300">Cloud Sync Active</p>
+                        <p class="text-[10px] text-slate-500 truncate" id="sidebarTxCount">0 transactions</p>
+                    </div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800/80">
+                    <p class="text-[10px] text-slate-500 truncate mb-1" id="sidebarUserEmail">—</p>
+                    <button onclick="signOut()" class="text-[11px] font-medium text-rose-400 hover:text-rose-300 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main content -->
+        <div class="flex-1 flex flex-col min-w-0 min-h-screen pb-20 md:pb-6">
+
+            <header class="sticky top-0 z-30 glass-card border-b border-slate-800 px-3 sm:px-6 py-3 flex items-center justify-between gap-2 sm:gap-4">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <button onclick="toggleSidebar()" class="md:hidden p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800/60 border border-slate-700/60 transition active:scale-95">
+                        <i class="fa-solid fa-bars text-base"></i>
+                    </button>
+                    <div class="truncate">
+                        <h2 id="pageTitle" class="text-sm sm:text-lg font-bold text-white tracking-tight truncate">Dashboard</h2>
+                        <p id="pageSubtitle" class="text-xs text-slate-400 hidden sm:block">Overview of your financial balance and activity</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+                    <div class="relative flex items-center">
+                        <span class="absolute left-2.5 text-slate-400 text-xs pointer-events-none"><i class="fa-solid fa-coins text-amber-400"></i></span>
+                        <select id="currencySelect" onchange="changeCurrency(this.value)" class="bg-slate-800/90 text-xs font-semibold text-slate-200 border border-slate-700/80 rounded-xl pl-7 pr-2.5 py-2 outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer">
+                            <option value="$">USD ($)</option>
+                            <option value="€">EUR (€)</option>
+                            <option value="£">GBP (£)</option>
+                            <option value="¥">JPY (¥)</option>
+                            <option value="₹">INR (₹)</option>
+                            <option value="₫">VND (₫)</option>
+                        </select>
+                    </div>
+
+                    <button onclick="openTransactionModal()" class="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-indigo-600/30 transition-all active:scale-95 whitespace-nowrap">
+                        <i class="fa-solid fa-plus text-xs"></i>
+                        <span class="hidden sm:inline">Add Transaction</span>
+                        <span class="sm:hidden">Add</span>
+                    </button>
+                </div>
+            </header>
+
+            <main class="p-3 sm:p-6 max-w-7xl w-full mx-auto flex-grow">
+
+                <!-- Loading indicator -->
+                <div id="globalLoader" class="hidden items-center justify-center py-20">
+                    <div class="flex flex-col items-center gap-3">
+                        <div class="spinner"></div>
+                        <p class="text-xs text-slate-400">Loading…</p>
+                    </div>
+                </div>
+
+                <!-- ═══════════ PAGE: DASHBOARD ═══════════ -->
+                <section id="page-dashboard" class="page-view space-y-4 sm:space-y-6">
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                        <div class="glass-card p-4 sm:p-5 rounded-2xl">
+                            <div class="flex items-center justify-between mb-2 sm:mb-3">
+                                <span class="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">Net Balance</span>
+                                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                                    <i class="fa-solid fa-scale-balanced text-xs sm:text-sm"></i>
+                                </div>
+                            </div>
+                            <h2 id="metricTotalBalance" class="text-lg sm:text-2xl font-bold text-white mb-1 sm:mb-2 truncate">$0.00</h2>
+                            <div class="flex items-center justify-between text-[10px] sm:text-xs pt-2 border-t border-slate-800 text-slate-400">
+                                <span>Status</span>
+                                <span id="metricBalanceStatus" class="font-semibold text-emerald-400 truncate">Positive</span>
+                            </div>
+                        </div>
+
+                        <div class="glass-card p-4 sm:p-5 rounded-2xl">
+                            <div class="flex items-center justify-between mb-2 sm:mb-3">
+                                <span class="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">Total Income</span>
+                                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                                    <i class="fa-solid fa-arrow-down-left text-xs sm:text-sm"></i>
+                                </div>
+                            </div>
+                            <h2 id="metricTotalIncome" class="text-lg sm:text-2xl font-bold text-emerald-400 mb-1 sm:mb-2 truncate">$0.00</h2>
+                            <div class="flex items-center justify-between text-[10px] sm:text-xs pt-2 border-t border-slate-800 text-slate-400">
+                                <span>Inflow</span>
+                                <span id="metricIncomeCount" class="font-medium text-slate-300">0 items</span>
+                            </div>
+                        </div>
+
+                        <div class="glass-card p-4 sm:p-5 rounded-2xl">
+                            <div class="flex items-center justify-between mb-2 sm:mb-3">
+                                <span class="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">Total Expenses</span>
+                                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center">
+                                    <i class="fa-solid fa-arrow-up-right text-xs sm:text-sm"></i>
+                                </div>
+                            </div>
+                            <h2 id="metricTotalExpense" class="text-lg sm:text-2xl font-bold text-rose-400 mb-1 sm:mb-2 truncate">$0.00</h2>
+                            <div class="flex items-center justify-between text-[10px] sm:text-xs pt-2 border-t border-slate-800 text-slate-400">
+                                <span>Outflow</span>
+                                <span id="metricExpenseCount" class="font-medium text-slate-300">0 items</span>
+                            </div>
+                        </div>
+
+                        <div class="glass-card p-4 sm:p-5 rounded-2xl">
+                            <div class="flex items-center justify-between mb-2 sm:mb-3">
+                                <span class="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">Savings Rate</span>
+                                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center">
+                                    <i class="fa-solid fa-percent text-xs sm:text-sm"></i>
+                                </div>
+                            </div>
+                            <h2 id="metricSavingsRate" class="text-lg sm:text-2xl font-bold text-sky-400 mb-1 sm:mb-2 truncate">0%</h2>
+                            <div class="flex items-center justify-between text-[10px] sm:text-xs pt-2 border-t border-slate-800 text-slate-400">
+                                <span>Target</span>
+                                <span class="font-medium text-slate-300">&gt; 20%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
+                        <div class="lg:col-span-8 glass-card p-4 sm:p-5 rounded-2xl flex flex-col">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-xs sm:text-sm font-semibold text-white flex items-center gap-2">
+                                    <i class="fa-solid fa-chart-column text-indigo-400"></i>
+                                    Recent Financial Activity
+                                </h3>
+                                <button onclick="switchPage('analytics')" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium">Details &rarr;</button>
+                            </div>
+                            <div class="relative flex-grow h-48 sm:h-64">
+                                <canvas id="dashTrendChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="lg:col-span-4 glass-card p-4 sm:p-5 rounded-2xl flex flex-col">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-xs sm:text-sm font-semibold text-white flex items-center gap-2">
+                                    <i class="fa-solid fa-chart-pie text-indigo-400"></i>
+                                    Expense Distribution
+                                </h3>
+                                <span class="text-[10px] sm:text-xs text-slate-400">By Category</span>
+                            </div>
+                            <div class="relative flex-grow flex items-center justify-center h-48 sm:h-64">
+                                <canvas id="dashCategoryChart"></canvas>
+                                <div id="dashNoChartData" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-500 text-xs">
+                                    <i class="fa-solid fa-chart-pie text-3xl mb-2 opacity-40"></i>
+                                    <p>No expense data recorded</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-4 sm:p-5 rounded-2xl">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xs sm:text-sm font-semibold text-white flex items-center gap-2">
+                                <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i>
+                                Recent Transactions Preview
+                            </h3>
+                            <button onclick="switchPage('transactions')" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium">View All &rarr;</button>
+                        </div>
+
+                        <div class="overflow-x-auto rounded-xl border border-slate-800">
+                            <table class="w-full text-left text-xs min-w-[500px]">
+                                <thead class="bg-slate-800/60 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                                    <tr>
+                                        <th class="py-3 px-4">Transaction</th>
+                                        <th class="py-3 px-4">Category</th>
+                                        <th class="py-3 px-4">Date</th>
+                                        <th class="py-3 px-4 text-right">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dashRecentTableBody" class="divide-y divide-slate-800/60 text-slate-200"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ═══════════ PAGE: TRANSACTIONS ═══════════ -->
+                <section id="page-transactions" class="page-view hidden space-y-4 sm:space-y-6">
+                    <div class="glass-card p-4 sm:p-5 rounded-2xl">
+                        <div class="flex flex-col gap-3 mb-5">
+                            <div>
+                                <h3 class="text-sm sm:text-base font-semibold text-white flex items-center gap-2">
+                                    <i class="fa-solid fa-list-check text-indigo-400"></i>
+                                    Transaction History
+                                </h3>
+                                <p class="text-xs text-slate-400 mt-0.5">Filter, search, edit, and audit your records</p>
+                            </div>
+
+                            <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 pt-2">
+                                <div class="relative col-span-2 sm:col-span-1 sm:w-48">
+                                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-400"></i>
+                                    <input type="text" id="searchInput" oninput="renderTransactions()" placeholder="Search..."
+                                        class="w-full bg-slate-900/80 text-xs text-slate-200 border border-slate-700/80 rounded-xl pl-8 pr-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                                </div>
+                                <select id="typeFilter" onchange="renderTransactions()" class="bg-slate-900/80 text-xs text-slate-200 border border-slate-700/80 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer">
+                                    <option value="ALL">All Types</option>
+                                    <option value="EXPENSE">Expenses</option>
+                                    <option value="INCOME">Income</option>
+                                </select>
+                                <select id="categoryFilter" onchange="renderTransactions()" class="bg-slate-900/80 text-xs text-slate-200 border border-slate-700/80 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer">
+                                    <option value="ALL">All Categories</option>
+                                </select>
+                                <button onclick="resetFilters()" class="col-span-2 sm:col-span-1 p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl transition text-xs flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-rotate-right"></i>
+                                    <span class="sm:hidden">Reset Filters</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="overflow-x-auto rounded-xl border border-slate-800">
+                            <table class="w-full text-left text-xs min-w-[640px]">
+                                <thead class="bg-slate-800/60 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                                    <tr>
+                                        <th class="py-3 px-4">Transaction</th>
+                                        <th class="py-3 px-4">Category</th>
+                                        <th class="py-3 px-4">Date</th>
+                                        <th class="py-3 px-4">Payment Method</th>
+                                        <th class="py-3 px-4 text-right">Amount</th>
+                                        <th class="py-3 px-4 text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactionTableBody" class="divide-y divide-slate-800/60 text-slate-200"></tbody>
+                            </table>
+                            <div id="noTransactionsMessage" class="hidden py-10 text-center text-slate-500">
+                                <i class="fa-solid fa-receipt text-3xl mb-2 opacity-40"></i>
+                                <p class="font-medium text-sm">No matching transactions found</p>
+                                <p class="text-xs text-slate-600 mt-1">Try adjusting search filters or add a new transaction.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ═══════════ PAGE: ANALYTICS ═══════════ -->
+                <section id="page-analytics" class="page-view hidden space-y-4 sm:space-y-6">
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                        <div class="glass-card p-3.5 sm:p-4 rounded-2xl flex items-center gap-3">
+                            <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-calendar-day text-sm sm:text-base"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-[10px] sm:text-xs text-slate-400 truncate">Avg Daily Spend</p>
+                                <h4 id="statAvgDaily" class="text-sm sm:text-lg font-bold text-white truncate">$0.00</h4>
+                            </div>
+                        </div>
+                        <div class="glass-card p-3.5 sm:p-4 rounded-2xl flex items-center gap-3">
+                            <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-crown text-sm sm:text-base"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-[10px] sm:text-xs text-slate-400 truncate">Top Category</p>
+                                <h4 id="statTopCategory" class="text-xs sm:text-sm font-bold text-white truncate">None</h4>
+                            </div>
+                        </div>
+                        <div class="glass-card p-3.5 sm:p-4 rounded-2xl flex items-center gap-3">
+                            <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-credit-card text-sm sm:text-base"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-[10px] sm:text-xs text-slate-400 truncate">Top Payment</p>
+                                <h4 id="statTopPayment" class="text-xs sm:text-sm font-bold text-white truncate">None</h4>
+                            </div>
+                        </div>
+                        <div class="glass-card p-3.5 sm:p-4 rounded-2xl flex items-center gap-3">
+                            <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-piggy-bank text-sm sm:text-base"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-[10px] sm:text-xs text-slate-400 truncate">Net Surplus</p>
+                                <h4 id="statNetSurplus" class="text-sm sm:text-lg font-bold text-emerald-400 truncate">$0.00</h4>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
+                        <div class="lg:col-span-7 glass-card p-4 sm:p-5 rounded-2xl flex flex-col">
+                            <h3 class="text-xs sm:text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fa-solid fa-chart-column text-indigo-400"></i>
+                                Income vs Expense Trends
+                            </h3>
+                            <div class="relative flex-grow h-52 sm:h-64">
+                                <canvas id="analyticsBarChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="lg:col-span-5 glass-card p-4 sm:p-5 rounded-2xl flex flex-col">
+                            <h3 class="text-xs sm:text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fa-solid fa-chart-pie text-indigo-400"></i>
+                                Expense Category Breakdown
+                            </h3>
+                            <div class="relative flex-grow flex items-center justify-center h-52 sm:h-64">
+                                <canvas id="analyticsDoughnutChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ═══════════ PAGE: BUDGETS ═══════════ -->
+                <section id="page-budgets" class="page-view hidden space-y-4 sm:space-y-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
+                        <div class="lg:col-span-7 glass-card p-4 sm:p-5 rounded-2xl">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <h3 class="text-sm sm:text-base font-semibold text-white flex items-center gap-2">
+                                        <i class="fa-solid fa-bullseye text-amber-400"></i>
+                                        Monthly Budgets
+                                    </h3>
+                                    <p class="text-xs text-slate-400 mt-0.5">Control spending limits</p>
+                                </div>
+                                <button onclick="openBudgetModal()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 rounded-xl transition flex items-center gap-1.5">
+                                    <i class="fa-solid fa-sliders text-amber-400"></i>
+                                    <span class="hidden sm:inline">Manage Limits</span>
+                                    <span class="sm:hidden">Limits</span>
+                                </button>
+                            </div>
+                            <div id="budgetsList" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                        </div>
+
+                        <div class="lg:col-span-5 glass-card p-4 sm:p-5 rounded-2xl">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <h3 class="text-sm sm:text-base font-semibold text-white flex items-center gap-2">
+                                        <i class="fa-solid fa-piggy-bank text-emerald-400"></i>
+                                        Savings Targets
+                                    </h3>
+                                    <p class="text-xs text-slate-400 mt-0.5">Track long term savings progress</p>
+                                </div>
+                                <button onclick="openGoalModal()" class="px-2.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-medium rounded-xl transition flex items-center gap-1.5">
+                                    <i class="fa-solid fa-plus text-emerald-400"></i> New Goal
+                                </button>
+                            </div>
+                            <div id="goalsList" class="space-y-3"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ═══════════ PAGE: SETTINGS ═══════════ -->
+                <section id="page-settings" class="page-view hidden space-y-4 sm:space-y-6">
+                    <div class="max-w-3xl mx-auto space-y-4 sm:space-y-6">
+                        <div class="glass-card p-4 sm:p-6 rounded-2xl">
+                            <h3 class="text-sm sm:text-base font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fa-solid fa-user text-indigo-400"></i>
+                                Account
+                            </h3>
+                            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-900/60 border border-slate-800">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-semibold text-white">Signed in as</p>
+                                    <p class="text-[11px] text-slate-400 truncate" id="settingsUserEmail">—</p>
+                                </div>
+                                <button onclick="signOut()" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+                                    <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="glass-card p-4 sm:p-6 rounded-2xl">
+                            <h3 class="text-sm sm:text-base font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fa-solid fa-sliders text-indigo-400"></i>
+                                General Preferences
+                            </h3>
+                            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-900/60 border border-slate-800">
+                                <div>
+                                    <p class="text-xs font-semibold text-white">Default Currency Symbol</p>
+                                    <p class="text-[11px] text-slate-400">Used for formatting financial metrics</p>
+                                </div>
+                                <select id="settingsCurrencySelect" onchange="changeCurrency(this.value)" class="bg-slate-800 text-xs font-semibold text-slate-200 border border-slate-700 rounded-xl px-3 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                                    <option value="$">USD ($)</option>
+                                    <option value="€">EUR (€)</option>
+                                    <option value="£">GBP (£)</option>
+                                    <option value="¥">JPY (¥)</option>
+                                    <option value="₹">INR (₹)</option>
+                                    <option value="₫">VND (₫)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="glass-card p-4 sm:p-6 rounded-2xl">
+                            <h3 class="text-sm sm:text-base font-semibold text-white mb-2 flex items-center gap-2">
+                                <i class="fa-solid fa-database text-sky-400"></i>
+                                Data Backup & Restore
+                            </h3>
+                            <p class="text-xs text-slate-400 mb-4">Export your data to JSON file or restore from a previous backup.</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <button onclick="exportData()" class="flex items-center justify-center gap-2 p-3 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-white rounded-xl transition active:scale-95">
+                                    <i class="fa-solid fa-download text-sky-400"></i> Export Data (JSON)
+                                </button>
+                                <button onclick="triggerImport()" class="flex items-center justify-center gap-2 p-3 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-white rounded-xl transition active:scale-95">
+                                    <i class="fa-solid fa-upload text-sky-400"></i> Import Data (JSON)
+                                </button>
+                                <input type="file" id="importFileInput" onchange="importData(event)" accept=".json" class="hidden">
+                            </div>
+                        </div>
+
+                        <div class="glass-card p-4 sm:p-6 rounded-2xl border-rose-500/20">
+                            <h3 class="text-sm sm:text-base font-semibold text-rose-400 mb-2 flex items-center gap-2">
+                                <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
+                                Danger Zone
+                            </h3>
+                            <p class="text-xs text-slate-400 mb-4">Clear all transactions, budgets and goals from your account.</p>
+                            <button onclick="confirmClearAll()" class="px-4 py-2.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-xs font-semibold rounded-xl transition active:scale-95">
+                                Clear All Data
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+            </main>
+        </div>
+
+        <!-- Mobile bottom nav -->
+        <nav class="fixed bottom-0 inset-x-0 z-30 bg-slate-950/90 border-t border-slate-800/80 backdrop-blur-xl md:hidden flex items-center justify-around py-2 px-1">
+            <button onclick="switchPage('dashboard')" id="bnav-dashboard" class="bnav-item flex flex-col items-center gap-1 py-1 px-2 rounded-lg text-[10px] text-slate-400 transition">
+                <i class="fa-solid fa-chart-line text-base"></i><span>Dashboard</span>
+            </button>
+            <button onclick="switchPage('transactions')" id="bnav-transactions" class="bnav-item flex flex-col items-center gap-1 py-1 px-2 rounded-lg text-[10px] text-slate-400 transition">
+                <i class="fa-solid fa-list-check text-base"></i><span>History</span>
+            </button>
+            <button onclick="switchPage('analytics')" id="bnav-analytics" class="bnav-item flex flex-col items-center gap-1 py-1 px-2 rounded-lg text-[10px] text-slate-400 transition">
+                <i class="fa-solid fa-chart-pie text-base"></i><span>Analytics</span>
+            </button>
+            <button onclick="switchPage('budgets')" id="bnav-budgets" class="bnav-item flex flex-col items-center gap-1 py-1 px-2 rounded-lg text-[10px] text-slate-400 transition">
+                <i class="fa-solid fa-bullseye text-base"></i><span>Budgets</span>
+            </button>
+            <button onclick="switchPage('settings')" id="bnav-settings" class="bnav-item flex flex-col items-center gap-1 py-1 px-2 rounded-lg text-[10px] text-slate-400 transition">
+                <i class="fa-solid fa-gear text-base"></i><span>Settings</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- ═══════════ MODALS ═══════════ -->
+
+    <!-- Transaction Modal -->
+    <div id="transactionModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm hidden">
+        <div class="glass-modal w-full max-w-md rounded-2xl p-4 sm:p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-3 flex-shrink-0">
+                <h3 id="modalTitle" class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-circle-plus text-indigo-400"></i> Add Transaction
+                </h3>
+                <button onclick="closeTransactionModal()" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <form id="transactionForm" onsubmit="handleTransactionSubmit(event)" class="space-y-3.5 overflow-y-auto pr-1 flex-grow">
+                <input type="hidden" id="editTxId">
+
+                <div class="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-xl border border-slate-800 text-xs">
+                    <button type="button" id="btnTypeExpense" onclick="setTxType('EXPENSE')" class="py-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-minus-circle"></i> Expense
+                    </button>
+                    <button type="button" id="btnTypeIncome" onclick="setTxType('INCOME')" class="py-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-plus-circle"></i> Income
+                    </button>
+                </div>
+                <input type="hidden" id="txType" value="EXPENSE">
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Title / Description</label>
+                    <input type="text" id="txTitle" required placeholder="e.g. Grocery Shopping, Salary"
+                        class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Amount</label>
+                        <div class="relative">
+                            <span id="txCurrencySymbol" class="absolute left-3 top-2 text-xs text-slate-400">$</span>
+                            <input type="number" id="txAmount" step="0.01" min="0.01" required placeholder="0.00"
+                                class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl pl-7 pr-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Category</label>
+                        <select id="txCategory" required class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"></select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Date</label>
+                        <input type="date" id="txDate" required class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Payment Method</label>
+                        <select id="txPaymentMethod" class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                            <option value="Credit Card">Credit Card</option>
+                            <option value="Debit Card">Debit Card</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Digital Wallet">Digital Wallet</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Notes (Optional)</label>
+                    <input type="text" id="txNotes" placeholder="Additional details..."
+                        class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+
+                <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-800 flex-shrink-0">
+                    <button type="button" onclick="closeTransactionModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 rounded-xl transition">Cancel</button>
+                    <button type="submit" id="txSubmitBtn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center gap-2">
+                        <span>Save Transaction</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Budget Modal -->
+    <div id="budgetModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm hidden">
+        <div class="glass-modal w-full max-w-md rounded-2xl p-4 sm:p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-3 flex-shrink-0">
+                <h3 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-amber-400"></i> Category Monthly Budgets
+                </h3>
+                <button onclick="closeBudgetModal()" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div id="budgetFormList" class="space-y-2.5 overflow-y-auto pr-1 mb-3 flex-grow"></div>
+            <div class="flex items-center justify-end pt-3 border-t border-slate-800 flex-shrink-0">
+                <button type="button" onclick="closeBudgetModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white rounded-xl transition">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Goal Modal -->
+    <div id="goalModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm hidden">
+        <div class="glass-modal w-full max-w-md rounded-2xl p-4 sm:p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-3 flex-shrink-0">
+                <h3 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-piggy-bank text-emerald-400"></i> New Savings Target
+                </h3>
+                <button onclick="closeGoalModal()" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <form id="goalForm" onsubmit="handleGoalSubmit(event)" class="space-y-3.5">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Goal Name</label>
+                    <input type="text" id="goalTitle" required placeholder="e.g. Vacation Fund, Laptop"
+                        class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Target Amount</label>
+                        <input type="number" id="goalTarget" step="0.01" min="1" required placeholder="1000.00"
+                            class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Current Saved</label>
+                        <input type="number" id="goalCurrent" step="0.01" min="0" placeholder="0.00"
+                            class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                </div>
+                <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                    <button type="button" onclick="closeGoalModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 rounded-xl transition">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white rounded-xl shadow-lg shadow-emerald-600/30 transition">Create Target</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Deposit Modal -->
+    <div id="depositModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm hidden">
+        <div class="glass-modal w-full max-w-sm rounded-2xl p-4 sm:p-6 shadow-2xl relative">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-coins text-emerald-400"></i> Add Funds
+                </h3>
+                <button onclick="closeDepositModal()" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <p id="depositGoalTitle" class="text-xs text-slate-400 mb-3"></p>
+            <input type="hidden" id="depositGoalId">
+            <div class="mb-4">
+                <label class="block text-xs font-medium text-slate-400 mb-1">Deposit Amount</label>
+                <input type="number" id="depositAmount" step="0.01" min="0.01" required placeholder="50.00"
+                    class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-emerald-500">
+            </div>
+            <div class="flex items-center justify-end gap-2">
+                <button type="button" onclick="closeDepositModal()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 rounded-xl transition">Cancel</button>
+                <button type="button" onclick="submitDeposit()" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white rounded-xl transition">Add Funds</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="confirmModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm hidden">
+        <div class="glass-modal w-full max-w-xs rounded-2xl p-5 text-center shadow-2xl relative">
+            <div class="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto mb-3">
+                <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+            </div>
+            <h4 id="confirmTitle" class="text-sm font-bold text-white mb-1">Confirm Action</h4>
+            <p id="confirmMessage" class="text-xs text-slate-400 mb-4">Are you sure you want to proceed?</p>
+            <div class="flex items-center justify-center gap-2">
+                <button id="confirmCancelBtn" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 rounded-xl transition">Cancel</button>
+                <button id="confirmOkBtn" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white rounded-xl shadow-lg shadow-rose-600/30 transition">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer" class="fixed bottom-16 md:bottom-5 right-3 sm:right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════
+        // 🔧 CONFIG — REPLACE WITH YOUR SUPABASE CREDENTIALS
+        // ═══════════════════════════════════════════════════════
+        const SUPABASE_URL = 'https://xilmemugckrvmenjwtwj.supabase.co/';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhpbG1lbXVnY2tydm1lbmp3dHdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4MDgwNTQsImV4cCI6MjEwNzM4NDA1NH0.aZHa5Pt_Waiux_xX7GY61vkpa5_jHufy5pPh4_NJH6o';
+
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // ═══════════════════════════════════════════════════════
+        // CATEGORIES
+        // ═══════════════════════════════════════════════════════
+        const CATEGORIES = {
+            EXPENSE: [
+                { id: 'food', name: 'Food & Dining', icon: 'fa-utensils', color: '#f59e0b', badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+                { id: 'transport', name: 'Transportation', icon: 'fa-car', color: '#3b82f6', badgeClass: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+                { id: 'housing', name: 'Housing & Rent', icon: 'fa-house', color: '#8b5cf6', badgeClass: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
+                { id: 'utilities', name: 'Utilities & Bills', icon: 'fa-bolt', color: '#eab308', badgeClass: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' },
+                { id: 'shopping', name: 'Shopping & Gear', icon: 'fa-bag-shopping', color: '#ec4899', badgeClass: 'bg-pink-500/10 text-pink-400 border-pink-500/20' },
+                { id: 'entertainment', name: 'Entertainment', icon: 'fa-film', color: '#06b6d4', badgeClass: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
+                { id: 'health', name: 'Health & Fitness', icon: 'fa-heart-pulse', color: '#10b981', badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+                { id: 'other_exp', name: 'Other Expenses', icon: 'fa-ellipsis', color: '#64748b', badgeClass: 'bg-slate-500/10 text-slate-400 border-slate-500/20' }
+            ],
+            INCOME: [
+                { id: 'salary', name: 'Salary & Wages', icon: 'fa-briefcase', color: '#10b981', badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+                { id: 'freelance', name: 'Freelance & Side', icon: 'fa-laptop-code', color: '#0284c7', badgeClass: 'bg-sky-500/10 text-sky-400 border-sky-500/20' },
+                { id: 'investments', name: 'Investments', icon: 'fa-chart-line', color: '#8b5cf6', badgeClass: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
+                { id: 'gifts', name: 'Gifts & Refunds', icon: 'fa-gift', color: '#f43f5e', badgeClass: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
+                { id: 'other_inc', name: 'Other Income', icon: 'fa-wallet', color: '#64748b', badgeClass: 'bg-slate-500/10 text-slate-400 border-slate-500/20' }
+            ]
+        };
+
+        // ═══════════════════════════════════════════════════════
+        // APP STATE (in-memory cache — source of truth is Supabase)
+        // ═══════════════════════════════════════════════════════
+        let appState = {
+            user: null,
+            currency: '$',
+            currentPage: 'dashboard',
+            transactions: [],
+            budgets: {},
+            goals: []
+        };
+
+        const PAGE_META = {
+            dashboard: { title: 'Dashboard Overview', subtitle: 'Summary of financial balance, activity, and key metrics' },
+            transactions: { title: 'Transaction Records', subtitle: 'Manage, search, and audit your income and expenses' },
+            analytics: { title: 'Analytics & Financial Insights', subtitle: 'Detailed visual breakdown of spending habits and trends' },
+            budgets: { title: 'Budgets & Savings Targets', subtitle: 'Control category spending caps and track savings goals' },
+            settings: { title: 'Settings & Data Management', subtitle: 'Currency configurations and JSON data backups' }
+        };
+
+        let dashTrendChartInstance = null;
+        let dashCategoryChartInstance = null;
+        let analyticsBarChartInstance = null;
+        let analyticsDoughnutChartInstance = null;
+        let currentAuthMode = 'login';
+
+        // ═══════════════════════════════════════════════════════
+        // AUTH
+        // ═══════════════════════════════════════════════════════
+        function switchAuthTab(mode) {
+            currentAuthMode = mode;
+            const tabLogin = document.getElementById('tabLogin');
+            const tabSignup = document.getElementById('tabSignup');
+            const submitText = document.getElementById('authSubmitText');
+
+            if (mode === 'login') {
+                tabLogin.className = 'py-2 rounded-lg font-semibold transition bg-indigo-600 text-white';
+                tabSignup.className = 'py-2 rounded-lg font-semibold transition text-slate-400 hover:text-white';
+                submitText.textContent = 'Sign In';
+            } else {
+                tabSignup.className = 'py-2 rounded-lg font-semibold transition bg-indigo-600 text-white';
+                tabLogin.className = 'py-2 rounded-lg font-semibold transition text-slate-400 hover:text-white';
+                submitText.textContent = 'Create Account';
+            }
+            hideAuthError();
+        }
+
+        function showAuthError(msg) {
+            const el = document.getElementById('authError');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+        function hideAuthError() {
+            document.getElementById('authError').classList.add('hidden');
+        }
+
+        async function handleAuthSubmit(e) {
+            e.preventDefault();
+            hideAuthError();
+
+            const email = document.getElementById('authEmail').value.trim();
+            const password = document.getElementById('authPassword').value;
+            const btn = document.getElementById('authSubmitBtn');
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;"></div>';
+
+            try {
+                if (currentAuthMode === 'login') {
+                    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                    if (error) throw error;
+                } else {
+                    const { error } = await supabaseClient.auth.signUp({ email, password });
+                    if (error) throw error;
+                    showToast('Account created! Check your email if confirmation is required.');
+                }
+            } catch (err) {
+                showAuthError(err.message || 'Authentication failed');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+
+        async function signOut() {
+            await supabaseClient.auth.signOut();
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // DATA FETCHING
+        // ═══════════════════════════════════════════════════════
+        async function fetchAllData() {
+            showLoader(true);
+            try {
+                const [txRes, budgetRes, goalRes, settingsRes] = await Promise.all([
+                    supabaseClient.from('transactions').select('*').order('date', { ascending: false }),
+                    supabaseClient.from('budgets').select('*'),
+                    supabaseClient.from('goals').select('*').order('created_at', { ascending: true }),
+                    supabaseClient.from('user_settings').select('*').maybeSingle()
+                ]);
+
+                if (txRes.error) throw txRes.error;
+                if (budgetRes.error) throw budgetRes.error;
+                if (goalRes.error) throw goalRes.error;
+
+                appState.transactions = txRes.data || [];
+                appState.budgets = {};
+                (budgetRes.data || []).forEach(b => { appState.budgets[b.category] = parseFloat(b.limit_amount); });
+                appState.goals = (goalRes.data || []).map(g => ({
+                    id: g.id,
+                    title: g.title,
+                    target: parseFloat(g.target_amount),
+                    current: parseFloat(g.current_amount)
+                }));
+                if (settingsRes.data) appState.currency = settingsRes.data.currency || '$';
+
+                // Sync UI
+                document.getElementById('currencySelect').value = appState.currency;
+                document.getElementById('settingsCurrencySelect').value = appState.currency;
+                document.getElementById('txCurrencySymbol').textContent = appState.currency;
+                document.getElementById('sidebarTxCount').textContent = `${appState.transactions.length} transactions`;
+                document.getElementById('sidebarUserEmail').textContent = appState.user.email;
+                document.getElementById('settingsUserEmail').textContent = appState.user.email;
+
+                renderAllViews();
+            } catch (err) {
+                console.error(err);
+                showToast('Failed to load data: ' + err.message);
+            } finally {
+                showLoader(false);
+            }
+        }
+
+        function showLoader(show) {
+            document.getElementById('globalLoader').classList.toggle('hidden', !show);
+            document.getElementById('globalLoader').classList.toggle('flex', show);
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // APP LIFECYCLE
+        // ═══════════════════════════════════════════════════════
+        window.addEventListener('DOMContentLoaded', () => {
+            populateCategoryFilterOptions();
+            setTxType('EXPENSE');
+            document.getElementById('txDate').value = new Date().toISOString().split('T')[0];
+
+            // Watch auth state
+            supabaseClient.auth.onAuthStateChange(async (event, session) => {
+                if (session?.user) {
+                    appState.user = session.user;
+                    document.getElementById('authScreen').classList.add('hidden');
+                    document.getElementById('appRoot').classList.remove('hidden');
+                    await fetchAllData();
+                    switchPage('dashboard');
+                } else {
+                    appState.user = null;
+                    document.getElementById('authScreen').classList.remove('hidden');
+                    document.getElementById('appRoot').classList.add('hidden');
+                }
+            });
+        });
+
+        // ═══════════════════════════════════════════════════════
+        // NAVIGATION
+        // ═══════════════════════════════════════════════════════
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('-translate-x-full');
+            document.getElementById('sidebarOverlay').classList.toggle('hidden');
+        }
+
+        function switchPage(pageId) {
+            if (!PAGE_META[pageId]) return;
+            appState.currentPage = pageId;
+
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.remove('bg-indigo-600/10', 'text-indigo-400', 'border-r-2', 'border-indigo-500');
+                el.classList.add('text-slate-400');
+            });
+            const activeNav = document.getElementById(`nav-${pageId}`);
+            if (activeNav) {
+                activeNav.classList.add('bg-indigo-600/10', 'text-indigo-400', 'border-r-2', 'border-indigo-500');
+                activeNav.classList.remove('text-slate-400');
+            }
+
+            document.querySelectorAll('.bnav-item').forEach(el => {
+                el.classList.remove('text-indigo-400', 'font-bold');
+                el.classList.add('text-slate-400');
+            });
+            const activeBnav = document.getElementById(`bnav-${pageId}`);
+            if (activeBnav) {
+                activeBnav.classList.add('text-indigo-400', 'font-bold');
+                activeBnav.classList.remove('text-slate-400');
+            }
+
+            document.getElementById('pageTitle').textContent = PAGE_META[pageId].title;
+            document.getElementById('pageSubtitle').textContent = PAGE_META[pageId].subtitle;
+
+            document.querySelectorAll('.page-view').forEach(p => p.classList.add('hidden'));
+            const target = document.getElementById(`page-${pageId}`);
+            if (target) target.classList.remove('hidden');
+
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (!sidebar.classList.contains('-translate-x-full')) {
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            renderAllViews();
+        }
+
+        function renderAllViews() {
+            renderMetrics();
+            if (appState.currentPage === 'dashboard') {
+                renderDashCharts();
+                renderDashRecentTable();
+            } else if (appState.currentPage === 'transactions') {
+                renderTransactions();
+            } else if (appState.currentPage === 'analytics') {
+                renderAnalyticsView();
+            } else if (appState.currentPage === 'budgets') {
+                renderBudgets();
+                renderGoals();
+            }
+        }
+
+        function formatMoney(amount) {
+            return `${appState.currency}${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        async function changeCurrency(newCurr) {
+            appState.currency = newCurr;
+            document.getElementById('currencySelect').value = newCurr;
+            document.getElementById('settingsCurrencySelect').value = newCurr;
+            document.getElementById('txCurrencySymbol').textContent = newCurr;
+            renderAllViews();
+
+            const { error } = await supabaseClient.from('user_settings')
+                .upsert({ user_id: appState.user.id, currency: newCurr, updated_at: new Date().toISOString() });
+            if (error) showToast('Failed to save currency');
+            else showToast(`Currency updated to ${newCurr}`);
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // RENDER: METRICS
+        // ═══════════════════════════════════════════════════════
+        function renderMetrics() {
+            let totalIncome = 0, totalExpense = 0, incomeCount = 0, expenseCount = 0;
+            appState.transactions.forEach(tx => {
+                const amt = parseFloat(tx.amount);
+                if (tx.type === 'INCOME') { totalIncome += amt; incomeCount++; }
+                else { totalExpense += amt; expenseCount++; }
+            });
+            const netBalance = totalIncome - totalExpense;
+            const savingsRate = totalIncome > 0 ? Math.max(0, ((totalIncome - totalExpense) / totalIncome) * 100) : 0;
+
+            document.getElementById('metricTotalBalance').textContent = formatMoney(netBalance);
+            document.getElementById('metricTotalIncome').textContent = formatMoney(totalIncome);
+            document.getElementById('metricTotalExpense').textContent = formatMoney(totalExpense);
+            document.getElementById('metricSavingsRate').textContent = `${savingsRate.toFixed(1)}%`;
+            document.getElementById('metricIncomeCount').textContent = `${incomeCount} items`;
+            document.getElementById('metricExpenseCount').textContent = `${expenseCount} items`;
+
+            const statusEl = document.getElementById('metricBalanceStatus');
+            if (netBalance >= 0) {
+                statusEl.textContent = 'Surplus';
+                statusEl.className = 'font-semibold text-emerald-400 truncate';
+            } else {
+                statusEl.textContent = 'Deficit';
+                statusEl.className = 'font-semibold text-rose-400 truncate';
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // RENDER: DASHBOARD CHARTS
+        // ═══════════════════════════════════════════════════════
+        function renderDashCharts() {
+            const noDataEl = document.getElementById('dashNoChartData');
+            const catTotals = {};
+            appState.transactions.filter(tx => tx.type === 'EXPENSE').forEach(tx => {
+                catTotals[tx.category] = (catTotals[tx.category] || 0) + parseFloat(tx.amount);
+            });
+
+            const labels = [], data = [], colors = [];
+            Object.keys(catTotals).forEach(catId => {
+                const c = CATEGORIES.EXPENSE.find(x => x.id === catId) || { name: catId, color: '#94a3b8' };
+                labels.push(c.name); data.push(catTotals[catId]); colors.push(c.color);
+            });
+
+            if (dashCategoryChartInstance) dashCategoryChartInstance.destroy();
+            if (data.length === 0) {
+                noDataEl.classList.remove('hidden');
+            } else {
+                noDataEl.classList.add('hidden');
+                dashCategoryChartInstance = new Chart(document.getElementById('dashCategoryChart').getContext('2d'), {
+                    type: 'doughnut',
+                    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#1e293b' }] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false, cutout: '68%',
+                        plugins: {
+                            legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 9 }, boxWidth: 8 } },
+                            tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${formatMoney(ctx.parsed)}` } }
+                        }
+                    }
+                });
+            }
+
+            // Trend
+            const sorted = [...appState.transactions].sort((a,b) => new Date(a.date) - new Date(b.date));
+            const datesMap = {};
+            sorted.forEach(tx => {
+                if (!datesMap[tx.date]) datesMap[tx.date] = { income: 0, expense: 0 };
+                if (tx.type === 'INCOME') datesMap[tx.date].income += parseFloat(tx.amount);
+                else datesMap[tx.date].expense += parseFloat(tx.amount);
+            });
+            const dateLabels = Object.keys(datesMap).slice(-8);
+
+            if (dashTrendChartInstance) dashTrendChartInstance.destroy();
+            dashTrendChartInstance = new Chart(document.getElementById('dashTrendChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: dateLabels.map(d => d.substring(5)),
+                    datasets: [
+                        { label: 'Income', data: dateLabels.map(d => datesMap[d].income), backgroundColor: '#10b981', borderRadius: 4 },
+                        { label: 'Expense', data: dateLabels.map(d => datesMap[d].expense), backgroundColor: '#f43f5e', borderRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#64748b', font: { size: 9 } } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { size: 9 }, callback: v => `${appState.currency}${v}` } }
+                    },
+                    plugins: { legend: { position: 'top', labels: { color: '#94a3b8', font: { size: 9 }, boxWidth: 8 } } }
+                }
+            });
+        }
+
+        function renderDashRecentTable() {
+            const tbody = document.getElementById('dashRecentTableBody');
+            const recent = [...appState.transactions].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+            tbody.innerHTML = '';
+            if (recent.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="py-6 text-center text-slate-500">No recent transactions</td></tr>`;
+                return;
+            }
+            recent.forEach(tx => {
+                const isIncome = tx.type === 'INCOME';
+                const catList = isIncome ? CATEGORIES.INCOME : CATEGORIES.EXPENSE;
+                const catObj = catList.find(c => c.id === tx.category) || { name: tx.category, badgeClass: 'bg-slate-500/10 text-slate-400 border-slate-500/20' };
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-800/40 transition">
+                        <td class="py-2.5 px-4 font-semibold text-white truncate max-w-[140px]">${escapeHtml(tx.title)}</td>
+                        <td class="py-2.5 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-medium border ${catObj.badgeClass}">${catObj.name}</span></td>
+                        <td class="py-2.5 px-4 text-slate-400 whitespace-nowrap">${tx.date}</td>
+                        <td class="py-2.5 px-4 text-right font-bold whitespace-nowrap ${isIncome ? 'text-emerald-400' : 'text-slate-100'}">${isIncome ? '+' : '-'}${formatMoney(tx.amount)}</td>
+                    </tr>`;
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // RENDER: ANALYTICS
+        // ═══════════════════════════════════════════════════════
+        function renderAnalyticsView() {
+            const expenses = appState.transactions.filter(tx => tx.type === 'EXPENSE');
+            const totalExp = expenses.reduce((s, tx) => s + parseFloat(tx.amount), 0);
+            const totalInc = appState.transactions.filter(tx => tx.type === 'INCOME').reduce((s, tx) => s + parseFloat(tx.amount), 0);
+
+            const uniqueDates = new Set(appState.transactions.map(tx => tx.date)).size || 1;
+            document.getElementById('statAvgDaily').textContent = formatMoney(totalExp / uniqueDates);
+
+            const catMap = {};
+            expenses.forEach(tx => catMap[tx.category] = (catMap[tx.category] || 0) + parseFloat(tx.amount));
+            let topCatId = Object.keys(catMap).reduce((a, b) => catMap[a] > catMap[b] ? a : b, null);
+            const topCatObj = CATEGORIES.EXPENSE.find(c => c.id === topCatId);
+            document.getElementById('statTopCategory').textContent = topCatObj ? topCatObj.name : 'N/A';
+
+            const payMap = {};
+            appState.transactions.forEach(tx => payMap[tx.payment_method] = (payMap[tx.payment_method] || 0) + 1);
+            let topPay = Object.keys(payMap).reduce((a, b) => payMap[a] > payMap[b] ? a : b, 'None');
+            document.getElementById('statTopPayment').textContent = topPay;
+            document.getElementById('statNetSurplus').textContent = formatMoney(totalInc - totalExp);
+
+            // Bar chart
+            const datesMap = {};
+            [...appState.transactions].sort((a,b) => new Date(a.date) - new Date(b.date)).forEach(tx => {
+                if (!datesMap[tx.date]) datesMap[tx.date] = { income: 0, expense: 0 };
+                if (tx.type === 'INCOME') datesMap[tx.date].income += parseFloat(tx.amount);
+                else datesMap[tx.date].expense += parseFloat(tx.amount);
+            });
+            const labels = Object.keys(datesMap).slice(-10);
+
+            if (analyticsBarChartInstance) analyticsBarChartInstance.destroy();
+            analyticsBarChartInstance = new Chart(document.getElementById('analyticsBarChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Income', data: labels.map(d => datesMap[d].income), backgroundColor: '#10b981', borderRadius: 4 },
+                        { label: 'Expense', data: labels.map(d => datesMap[d].expense), backgroundColor: '#f43f5e', borderRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        x: { ticks: { color: '#64748b', font: { size: 9 } } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { size: 9 } } }
+                    },
+                    plugins: { legend: { labels: { color: '#94a3b8', font: { size: 9 } } } }
+                }
+            });
+
+            // Doughnut
+            const catLabels = [], catData = [], catColors = [];
+            Object.keys(catMap).forEach(catId => {
+                const c = CATEGORIES.EXPENSE.find(x => x.id === catId) || { name: catId, color: '#64748b' };
+                catLabels.push(c.name); catData.push(catMap[catId]); catColors.push(c.color);
+            });
+            if (analyticsDoughnutChartInstance) analyticsDoughnutChartInstance.destroy();
+            analyticsDoughnutChartInstance = new Chart(document.getElementById('analyticsDoughnutChart').getContext('2d'), {
+                type: 'doughnut',
+                data: { labels: catLabels, datasets: [{ data: catData, backgroundColor: catColors, borderWidth: 2, borderColor: '#1e293b' }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 9 } } } } }
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // RENDER: BUDGETS & GOALS
+        // ═══════════════════════════════════════════════════════
+        function renderBudgets() {
+            const container = document.getElementById('budgetsList');
+            container.innerHTML = '';
+            const spentMap = {};
+            appState.transactions.filter(tx => tx.type === 'EXPENSE').forEach(tx => {
+                spentMap[tx.category] = (spentMap[tx.category] || 0) + parseFloat(tx.amount);
+            });
+
+            const activeBudgets = Object.keys(appState.budgets).filter(k => appState.budgets[k] > 0);
+            if (activeBudgets.length === 0) {
+                container.innerHTML = `<div class="col-span-1 sm:col-span-2 text-center text-slate-500 text-xs py-4">No budget limits set. Click "Manage Limits" to configure.</div>`;
+                return;
+            }
+
+            activeBudgets.forEach(catId => {
+                const limit = appState.budgets[catId];
+                const spent = spentMap[catId] || 0;
+                const percent = Math.min(100, Math.round((spent / limit) * 100));
+                const c = CATEGORIES.EXPENSE.find(x => x.id === catId) || { name: catId, icon: 'fa-circle-dot' };
+
+                let barColor = 'bg-indigo-500';
+                let badge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">${percent}%</span>`;
+                if (percent >= 100) { barColor = 'bg-rose-500'; badge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Over Limit</span>`; }
+                else if (percent >= 80) { barColor = 'bg-amber-500'; badge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">Warning</span>`; }
+
+                container.innerHTML += `
+                    <div class="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-medium text-slate-200 flex items-center gap-1.5 truncate">
+                                <i class="fa-solid ${c.icon} text-slate-400 text-xs"></i> ${c.name}
+                            </span>${badge}
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
+                            <span>Spent: <strong class="text-slate-200">${formatMoney(spent)}</strong></span>
+                            <span>Limit: ${formatMoney(limit)}</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full ${barColor} transition-all duration-300" style="width: ${percent}%"></div>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        function renderGoals() {
+            const container = document.getElementById('goalsList');
+            container.innerHTML = '';
+            if (appState.goals.length === 0) {
+                container.innerHTML = `<div class="text-center text-slate-500 text-xs py-6">No savings targets yet. Click "+ New Goal" to start!</div>`;
+                return;
+            }
+            appState.goals.forEach(goal => {
+                const percent = Math.min(100, Math.round((goal.current / goal.target) * 100));
+                container.innerHTML += `
+                    <div class="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-xs font-semibold text-slate-200 truncate pr-2">${escapeHtml(goal.title)}</span>
+                            <div class="flex items-center gap-1 flex-shrink-0">
+                                <button onclick="openDepositModal('${goal.id}')" class="px-2 py-0.5 text-[10px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-md transition">+ Deposit</button>
+                                <button onclick="confirmDeleteGoal('${goal.id}')" class="p-1 text-slate-500 hover:text-rose-400 transition text-xs"><i class="fa-solid fa-trash-can"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
+                            <span>${formatMoney(goal.current)} / ${formatMoney(goal.target)}</span>
+                            <span class="font-bold text-emerald-400">${percent}%</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full bg-emerald-500 transition-all duration-300" style="width: ${percent}%"></div>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // RENDER: TRANSACTIONS
+        // ═══════════════════════════════════════════════════════
+        function populateCategoryFilterOptions() {
+            const sel = document.getElementById('categoryFilter');
+            sel.innerHTML = '<option value="ALL">All Categories</option>';
+            [...CATEGORIES.EXPENSE, ...CATEGORIES.INCOME].forEach(c => {
+                sel.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+            });
+        }
+
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('typeFilter').value = 'ALL';
+            document.getElementById('categoryFilter').value = 'ALL';
+            renderTransactions();
+        }
+
+        function renderTransactions() {
+            const tbody = document.getElementById('transactionTableBody');
+            const noMsg = document.getElementById('noTransactionsMessage');
+            const search = document.getElementById('searchInput').value.toLowerCase().trim();
+            const typeFilter = document.getElementById('typeFilter').value;
+            const catFilter = document.getElementById('categoryFilter').value;
+
+            let filtered = [...appState.transactions];
+            if (typeFilter !== 'ALL') filtered = filtered.filter(tx => tx.type === typeFilter);
+            if (catFilter !== 'ALL') filtered = filtered.filter(tx => tx.category === catFilter);
+            if (search) filtered = filtered.filter(tx =>
+                tx.title.toLowerCase().includes(search) ||
+                (tx.notes && tx.notes.toLowerCase().includes(search)) ||
+                (tx.payment_method || '').toLowerCase().includes(search)
+            );
+            filtered.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+            tbody.innerHTML = '';
+            if (filtered.length === 0) {
+                noMsg.classList.remove('hidden');
+                return;
+            }
+            noMsg.classList.add('hidden');
+
+            filtered.forEach(tx => {
+                const catList = tx.type === 'INCOME' ? CATEGORIES.INCOME : CATEGORIES.EXPENSE;
+                const c = catList.find(x => x.id === tx.category) || { name: tx.category, icon: 'fa-tag', badgeClass: 'bg-slate-500/10 text-slate-400 border-slate-500/20' };
+                const isIncome = tx.type === 'INCOME';
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-800/40 transition">
+                        <td class="py-3 px-4">
+                            <div class="font-semibold text-white truncate max-w-[150px] sm:max-w-xs">${escapeHtml(tx.title)}</div>
+                            ${tx.notes ? `<div class="text-[11px] text-slate-400 mt-0.5 truncate max-w-[150px] sm:max-w-xs">${escapeHtml(tx.notes)}</div>` : ''}
+                        </td>
+                        <td class="py-3 px-4">
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border ${c.badgeClass}">
+                                <i class="fa-solid ${c.icon}"></i> ${c.name}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-slate-400 whitespace-nowrap">${tx.date}</td>
+                        <td class="py-3 px-4 text-slate-400 whitespace-nowrap">${escapeHtml(tx.payment_method || 'N/A')}</td>
+                        <td class="py-3 px-4 text-right font-bold whitespace-nowrap ${isIncome ? 'text-emerald-400' : 'text-slate-100'}">${isIncome ? '+' : '-'}${formatMoney(tx.amount)}</td>
+                        <td class="py-3 px-4 text-center whitespace-nowrap">
+                            <button onclick="editTransaction('${tx.id}')" class="p-1.5 text-slate-400 hover:text-indigo-400 transition"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="confirmDeleteTransaction('${tx.id}')" class="p-1.5 text-slate-400 hover:text-rose-400 transition ml-1"><i class="fa-solid fa-trash-can"></i></button>
+                        </td>
+                    </tr>`;
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // TRANSACTION CRUD
+        // ═══════════════════════════════════════════════════════
+        function setTxType(type) {
+            document.getElementById('txType').value = type;
+            const catSelect = document.getElementById('txCategory');
+            const btnExp = document.getElementById('btnTypeExpense');
+            const btnInc = document.getElementById('btnTypeIncome');
+
+            if (type === 'EXPENSE') {
+                btnExp.className = 'py-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5 bg-rose-600 text-white shadow-md';
+                btnInc.className = 'py-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-white';
+                catSelect.innerHTML = CATEGORIES.EXPENSE.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            } else {
+                btnInc.className = 'py-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5 bg-emerald-600 text-white shadow-md';
+                btnExp.className = 'py-2 rounded-lg font-semibold transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-white';
+                catSelect.innerHTML = CATEGORIES.INCOME.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            }
+        }
+
+        function openTransactionModal(editId = null) {
+            const form = document.getElementById('transactionForm');
+            const titleEl = document.getElementById('modalTitle');
+            form.reset();
+            document.getElementById('editTxId').value = '';
+            document.getElementById('txDate').value = new Date().toISOString().split('T')[0];
+
+            if (editId) {
+                const tx = appState.transactions.find(t => String(t.id) === String(editId));
+                if (tx) {
+                    document.getElementById('editTxId').value = tx.id;
+                    setTxType(tx.type);
+                    document.getElementById('txTitle').value = tx.title;
+                    document.getElementById('txAmount').value = tx.amount;
+                    document.getElementById('txCategory').value = tx.category;
+                    document.getElementById('txDate').value = tx.date;
+                    document.getElementById('txPaymentMethod').value = tx.payment_method || 'Credit Card';
+                    document.getElementById('txNotes').value = tx.notes || '';
+                    titleEl.innerHTML = `<i class="fa-solid fa-pen-to-square text-indigo-400"></i> Edit Transaction`;
+                }
+            } else {
+                setTxType('EXPENSE');
+                titleEl.innerHTML = `<i class="fa-solid fa-circle-plus text-indigo-400"></i> Add Transaction`;
+            }
+            document.getElementById('transactionModal').classList.remove('hidden');
+        }
+
+        function closeTransactionModal() {
+            document.getElementById('transactionModal').classList.add('hidden');
+        }
+
+        async function handleTransactionSubmit(e) {
+            e.preventDefault();
+            const btn = document.getElementById('txSubmitBtn');
+            btn.disabled = true;
+            const original = btn.innerHTML;
+            btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div>';
+
+            const editId = document.getElementById('editTxId').value;
+            const payload = {
+                title: document.getElementById('txTitle').value.trim(),
+                type: document.getElementById('txType').value,
+                amount: parseFloat(document.getElementById('txAmount').value),
+                category: document.getElementById('txCategory').value,
+                date: document.getElementById('txDate').value,
+                payment_method: document.getElementById('txPaymentMethod').value,
+                notes: document.getElementById('txNotes').value.trim()
+            };
+
+            try {
+                if (editId) {
+                    const { error } = await supabaseClient.from('transactions').update(payload).eq('id', editId);
+                    if (error) throw error;
+                    showToast('Transaction updated');
+                } else {
+                    const { error } = await supabaseClient.from('transactions').insert([payload]);
+                    if (error) throw error;
+                    showToast('New transaction added');
+                }
+                closeTransactionModal();
+                await fetchAllData();
+            } catch (err) {
+                showToast('Error: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+
+        function editTransaction(id) { openTransactionModal(id); }
+
+        function confirmDeleteTransaction(id) {
+            showConfirmDialog('Delete Transaction', 'Are you sure you want to delete this transaction?', async () => {
+                const { error } = await supabaseClient.from('transactions').delete().eq('id', id);
+                if (error) return showToast('Delete failed: ' + error.message);
+                showToast('Transaction deleted');
+                await fetchAllData();
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // BUDGETS
+        // ═══════════════════════════════════════════════════════
+        function openBudgetModal() {
+            const listEl = document.getElementById('budgetFormList');
+            listEl.innerHTML = '';
+            CATEGORIES.EXPENSE.forEach(cat => {
+                const currentLimit = appState.budgets[cat.id] || 0;
+                listEl.innerHTML += `
+                    <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                        <span class="text-xs font-medium text-slate-200 flex items-center gap-2 truncate pr-2">
+                            <i class="fa-solid ${cat.icon} text-slate-400"></i> ${cat.name}
+                        </span>
+                        <div class="relative w-28 sm:w-32 flex-shrink-0">
+                            <span class="absolute left-2.5 top-1.5 text-xs text-slate-400 pointer-events-none">${appState.currency}</span>
+                            <input type="number" min="0" step="10" value="${currentLimit}"
+                                onchange="updateBudgetLimit('${cat.id}', this.value)"
+                                class="w-full bg-slate-800 border border-slate-700 rounded-lg pl-6 pr-2 py-1 text-xs text-right text-white outline-none focus:ring-1 focus:ring-indigo-500">
+                        </div>
+                    </div>`;
+            });
+            document.getElementById('budgetModal').classList.remove('hidden');
+        }
+        function closeBudgetModal() { document.getElementById('budgetModal').classList.add('hidden'); }
+
+        async function updateBudgetLimit(catId, val) {
+            const num = parseFloat(val);
+            if (isNaN(num) || num <= 0) {
+                const { error } = await supabaseClient.from('budgets').delete().eq('category', catId);
+                if (!error) delete appState.budgets[catId];
+            } else {
+                const { error } = await supabaseClient.from('budgets').upsert(
+                    { category: catId, limit_amount: num },
+                    { onConflict: 'user_id,category' }
+                );
+                if (!error) appState.budgets[catId] = num;
+            }
+            renderBudgets();
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // GOALS
+        // ═══════════════════════════════════════════════════════
+        function openGoalModal() {
+            document.getElementById('goalForm').reset();
+            document.getElementById('goalModal').classList.remove('hidden');
+        }
+        function closeGoalModal() { document.getElementById('goalModal').classList.add('hidden'); }
+
+        async function handleGoalSubmit(e) {
+            e.preventDefault();
+            const payload = {
+                title: document.getElementById('goalTitle').value.trim(),
+                target_amount: parseFloat(document.getElementById('goalTarget').value),
+                current_amount: parseFloat(document.getElementById('goalCurrent').value) || 0
+            };
+            const { error } = await supabaseClient.from('goals').insert([payload]);
+            if (error) return showToast('Error: ' + error.message);
+            closeGoalModal();
+            showToast('Savings target created');
+            await fetchAllData();
+        }
+
+        function openDepositModal(goalId) {
+            const goal = appState.goals.find(g => String(g.id) === String(goalId));
+            if (!goal) return;
+            document.getElementById('depositGoalId').value = goalId;
+            document.getElementById('depositGoalTitle').textContent = `Target: ${goal.title} (${formatMoney(goal.current)} / ${formatMoney(goal.target)})`;
+            document.getElementById('depositAmount').value = '';
+            document.getElementById('depositModal').classList.remove('hidden');
+        }
+        function closeDepositModal() { document.getElementById('depositModal').classList.add('hidden'); }
+
+        async function submitDeposit() {
+            const goalId = document.getElementById('depositGoalId').value;
+            const amount = parseFloat(document.getElementById('depositAmount').value);
+            if (isNaN(amount) || amount <= 0) return;
+            const goal = appState.goals.find(g => String(g.id) === String(goalId));
+            if (!goal) return;
+
+            const newCurrent = goal.current + amount;
+            const { error } = await supabaseClient.from('goals').update({ current_amount: newCurrent }).eq('id', goalId);
+            if (error) return showToast('Error: ' + error.message);
+            closeDepositModal();
+            showToast(`Added ${formatMoney(amount)} to ${goal.title}`);
+            await fetchAllData();
+        }
+
+        function confirmDeleteGoal(goalId) {
+            showConfirmDialog('Delete Savings Goal', 'Are you sure you want to delete this target?', async () => {
+                const { error } = await supabaseClient.from('goals').delete().eq('id', goalId);
+                if (error) return showToast('Delete failed: ' + error.message);
+                showToast('Target deleted');
+                await fetchAllData();
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // IMPORT / EXPORT / CLEAR
+        // ═══════════════════════════════════════════════════════
+        function exportData() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+                transactions: appState.transactions,
+                budgets: appState.budgets,
+                goals: appState.goals,
+                currency: appState.currency
+            }, null, 2));
+            const a = document.createElement('a');
+            a.setAttribute("href", dataStr);
+            a.setAttribute("download", `spendsmart_backup_${new Date().toISOString().split('T')[0]}.json`);
+            document.body.appendChild(a); a.click(); a.remove();
+            showToast('Backup exported');
+        }
+
+        function triggerImport() { document.getElementById('importFileInput').click(); }
+
+        async function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (!imported.transactions) return showToast('Invalid JSON format');
+
+                    // Insert all transactions
+                    const txPayload = imported.transactions.map(tx => ({
+                        title: tx.title, type: tx.type, category: tx.category,
+                        amount: tx.amount, date: tx.date,
+                        payment_method: tx.payment_method || tx.paymentMethod,
+                        notes: tx.notes
+                    }));
+                    if (txPayload.length) {
+                        const { error } = await supabaseClient.from('transactions').insert(txPayload);
+                        if (error) throw error;
+                    }
+                    showToast('Imported ' + txPayload.length + ' transactions');
+                    await fetchAllData();
+                } catch(err) {
+                    showToast('Import failed: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function confirmClearAll() {
+            showConfirmDialog('Clear All Data', 'Erase all transactions, budgets and goals? This cannot be undone.', async () => {
+                await supabaseClient.from('transactions').delete().neq('id', 0);
+                await supabaseClient.from('budgets').delete().neq('id', 0);
+                await supabaseClient.from('goals').delete().neq('id', 0);
+                showToast('All data cleared');
+                await fetchAllData();
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // TOASTS & DIALOGS
+        // ═══════════════════════════════════════════════════════
+        function showToast(message) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'glass-modal text-white px-3.5 py-2 rounded-xl text-xs shadow-xl flex items-center gap-2 border border-slate-700/80 transform transition-all duration-300 translate-y-2 opacity-0 pointer-events-auto';
+            toast.innerHTML = `<i class="fa-solid fa-circle-check text-indigo-400"></i> ${escapeHtml(message)}`;
+            container.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.remove('translate-y-2', 'opacity-0'));
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function showConfirmDialog(title, message, onConfirm) {
+            document.getElementById('confirmTitle').textContent = title;
+            document.getElementById('confirmMessage').textContent = message;
+            const okBtn = document.getElementById('confirmOkBtn');
+            const cancelBtn = document.getElementById('confirmCancelBtn');
+            const modal = document.getElementById('confirmModal');
+
+            const cleanup = () => {
+                modal.classList.add('hidden');
+                okBtn.onclick = null;
+                cancelBtn.onclick = null;
+            };
+            okBtn.onclick = async () => { await onConfirm(); cleanup(); };
+            cancelBtn.onclick = cleanup;
+            modal.classList.remove('hidden');
+        }
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/[&<>"']/g, m => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+            }[m]));
+        }
+    </script>
+</body>
+</html>
